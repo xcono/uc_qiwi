@@ -1,0 +1,167 @@
+<?php
+/**
+ * @file
+ * QIWI payment method file.
+ */
+define("qiwiInetBill", "http://w.qiwi.ru/setInetBill_utf.do");
+
+/**
+ * Implementation of hook_menu().
+ */
+function uc_qiwi_menu() {
+  $items['uc_qiwi/done'] = array(
+    'title'    => 'Qiwi complete',
+    'page callback' => 'uc_qiwi_done_payment',
+    'access arguments'   => array('access content'),
+    'type'     => MENU_CALLBACK,
+  );
+  $items['uc_qiwi/fail'] = array(
+    'title'    => 'Qiwi processing',
+    'page callback' => 'uc_qiwi_payment_end',
+    'access arguments'   => array('access content'),
+    'type'     => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function uc_qiwi_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'uc_cart_checkout_review_form' && ($order_id = intval($_SESSION['cart_order'])) > 0) {
+    $order = uc_order_load($order_id);
+
+    if ($order->payment_method == 'uc_qiwi') {
+      unset($form['submit']);
+      $form['#prefix'] = '<table ><tr><td>';
+      $form['#suffix'] = '</td><td>'. drupal_get_form('uc_qiwi_submit_form', $order) .'</td></tr></table>';
+    }
+  }
+}
+
+/**
+ * Menu Callbacks for Qiwi payment method.
+ */
+function uc_qiwi_done_payment() {
+  module_load_include('inc', 'uc_qiwi', 'uc_qiwi_response'); // load Qiwi Response Class
+  $s = new SoapServer('IShopClientWS.wsdl', array('classmap' => array('tns:updateBill' => 'Param', 'tns:updateBillResponse' => 'Response')));
+  $s->setClass('QiwiClientServer');
+  $s->handle();
+  if (isset($_SESSION['cart_order'])) {
+    $order_id = $_SESSION['cart_order'];
+    $_SESSION['do_complete'] = TRUE;
+    drupal_goto('cart/checkout/complete');
+  }
+  return $output; //remove ?
+}
+
+/**
+ * Back-end payment form
+ */
+function uc_payment_method_qiwi($op, &$arg1) {
+  switch ($op) {
+    case 'cart-details':
+      return $details;
+    case 'settings':
+      $form['uc_qiwi_action_url'] = array(
+        '#type'          => 'textfield',
+        '#title'         => t('Action url'),
+        '#default_value' => variable_get('uc_qiwi_action_url', qiwiInetBill),
+        '#description'   => t("Please enter action url.\nDefault: !url", array('!url' => qiwiInetBill)),
+      );
+      $form['uc_qiwi_mrh'] = array(
+        '#type'          => 'textfield',
+        '#title'         => t('Merchant Login'),
+        '#default_value' => variable_get('uc_qiwi_mrh', ''),
+        '#description'   => t("Please enter Merchant Login."),
+      );
+      $form['uc_qiwi_psw'] = array(
+        '#type'          => 'textfield',
+        '#title'         => t('Merchant Password'),
+        '#default_value' => variable_get('uc_qiwi_psw', ''),
+        '#description'   => t("Please enter Merchant Password."),
+      );
+      return $form;
+    case 'cart-process':
+      return;
+  }
+}
+
+/**
+ * Front-end payment form
+ */
+function uc_qiwi_submit_form(&$form_state, $order) {
+  $amount = $order->order_total * variable_get('uc_qiwi_rate', '1.00');
+  $ser['amount'] = $amount;
+  $description = serialize($ser);
+  if (db_result(db_query("SELECT COUNT(txnid) FROM {uc_qiwi_transaction} WHERE txnid = '%s'", $order->order_id))) {
+    db_query("UPDATE {uc_qiwi_transaction} SET description = '%s' WHERE txnid = %d", $description, $order->order_id);
+  }
+  else {
+    db_query("INSERT INTO {uc_qiwi_transaction} (txnid, description) VALUES (%d, '%s')", $order->order_id, $description);
+  }
+
+  $form['from'] = array(
+    '#type' => 'hidden',
+    '#value' => variable_get('uc_qiwi_mrh', ''),
+  );
+  $form['txn_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $order->order_id,
+  );
+
+  $sitename = variable_get('site_name', 'eStore');
+  $description = t('Purchase from site !sitename. Transaction !ID.', array('!sitename' => $sitename, '!ID' => $order->order_id));
+
+  $form['com'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $description,
+  );
+
+  $form['summ'] = array(
+    '#type' => 'hidden',
+    '#value' => $amount,
+  );
+
+  $form['to'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Phone')
+  );
+
+  $form['#action'] = variable_get('uc_qiwi_action_url', qiwiInetBill);
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Place your order'),
+  );
+  return $form;
+}
+
+/**
+ * Redirect user to cart after end of operation.
+ */
+function uc_qiwi_payment_end($type) {
+  unset($_SESSION['cart_order']);
+  drupal_set_message( t("Your payment has been declined."));
+  drupal_goto('cart');
+  return $output; //remove ??
+}
+
+/**
+ * Implementation of hook_payment_method().
+ */
+function uc_qiwi_payment_method() {
+  $path = base_path() . drupal_get_path('module', 'uc_qiwi');
+  $title =  t('Qiwi');
+
+  $methods[] = array(
+    'id' => 'uc_qiwi',
+    'name' => t('Qiwi'),
+    'title' => $title,
+    'desc' => t('Redirect to qiwi.ru.'),
+    'callback' => 'uc_payment_method_qiwi',
+    'weight' => 3,
+    'checkout' => TRUE,
+    'no_gateway' => TRUE,
+  );
+  return $methods;
+}
