@@ -1,0 +1,53 @@
+<?php
+/**
+ * @file
+ * Qiwi payment gateway install file.
+ *
+ * This module installs a uc_qiwi module
+ */
+
+/**
+ * Implementation of hook_schema().
+ */
+function uc_qiwi_schema() {
+  $schema['uc_qiwi_transaction'] = array(
+    'description' => t('TODO'),
+    'fields' => array(
+      'txnid' => array(
+        'description' => t('TODO'),
+        'type' => 'int',
+        'unsigned' => 1,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'amount' => array(
+        'description' => t('TODO'),
+        'type' => 'numeric',
+        'precision' => 6,
+        'scale' => 2,
+        'not null' => TRUE,
+        'default' => 0.00,
+      ),
+      'description' => array(
+        'description' => t('TODO'),
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('txnid'),
+  );
+
+  return $schema;
+}
+
+function uc_qiwi_install() {
+  // Create tables.
+  drupal_install_schema('uc_qiwi');
+  drupal_set_message(t('Ubercart: QIWI tables have been created.'));
+}
+
+function uc_qiwi_uninstall() {
+  // Remove tables.
+  drupal_uninstall_schema('uc_qiwi');
+}
+
