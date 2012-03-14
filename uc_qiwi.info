@@ -1,1 +1,5 @@
-name = UC Qiwi
+name = "UC Qiwi"
+description = "Qiwi Processing Payment Gateway."
+dependencies[] = uc_payment
+package = "Ubercart - payment"
+core = 6.x
